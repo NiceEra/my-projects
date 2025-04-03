@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Сапер</title>
+    <style>
+        body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+}
+
+h1 {
+    margin-top: 20px;
+}
+
+#board {
+    display: grid;
+    grid-template-columns: repeat(20, 30px);
+    grid-template-rows: repeat(20, 30px);
+    gap: 3px;
+    margin-top: 20px;
+    justify-content: center;
+}
+
+.cell {
+    width: 30px;
+    height: 30px;
+    background-color: lightgray;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border: 1px solid #888;
+    font-size: 14px;
+}
+
+.cell.revealed {
+    background-color: #ddd;
+    cursor: default;
+}
+
+.cell.mine {
+    background-color: red;
+}
+
+.cell.flag {
+    background-color: yellow;
+}
+
+.cell.safe {
+    background-color: gold;
+}
+
+#restart {
+    margin-top: 20px;
+    padding: 10px 20px;
+    font-size: 16px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    cursor: pointer;
+    border-radius: 5px;
+}
+
+#restart:hover {
+    background-color: #45a049;
+}
+
+    </style>
+</head>
+<body>
+    <h1>Сапер</h1>
+    <button id="restart">Рестарт</button>
+    <div id="board"></div>
+    <script>
+        const rows = 20;
+const cols = 20;
+const mineCount = 60;
+let board = [];
+let revealedCount = 0;
+let gameOver = false;
+let firstClick = true;
+
+// Инициализация доски
+function initializeBoard() {
+    board = [];
+    revealedCount = 0;
+    gameOver = false;
+    firstClick = true;
+
+    for (let i = 0; i < rows; i++) {
+        board[i] = [];
+        for (let j = 0; j < cols; j++) {
+            board[i][j] = {
+                mine: false,
+                revealed: false,
+                flag: false,
+                adjacentMines: 0
+            };
+        }
+    }
+
+    renderBoard();
+}
+
+// Расстановка мин, исключая первую кликнутую клетку
+function placeMines(excludeRow, excludeCol) {
+    let minesPlaced = 0;
+    while (minesPlaced < mineCount) {
+        const r = Math.floor(Math.random() * rows);
+        const c = Math.floor(Math.random() * cols);
+        
+        // Исключаем первую клетку и её соседей
+        if (!board[r][c].mine && (Math.abs(r - excludeRow) > 1 || Math.abs(c - excludeCol) > 1)) {
+            board[r][c].mine = true;
+            minesPlaced++;
+        }
+    }
+
+    calculateAdjacentMines();
+}
+
+// Подсчет количества мин вокруг каждой клетки
+function calculateAdjacentMines() {
+    for (let i = 0; i < rows; i++) {
+        for (let j = 0; j < cols; j++) {
+            if (board[i][j].mine) continue;
+            let adjacentMines = 0;
+            for (let x = -1; x <= 1; x++) {
+                for (let y = -1; y <= 1; y++) {
+                    const ni = i + x;
+                    const nj = j + y;
+                    if (ni >= 0 && ni < rows && nj >= 0 && nj < cols && board[ni][nj].mine) {
+                        adjacentMines++;
+                    }
+                }
+            }
+            board[i][j].adjacentMines = adjacentMines;
+        }
+    }
+}
+
+// Отображение доски
+function renderBoard() {
+    const boardElement = document.getElementById("board");
+    boardElement.innerHTML = "";
+    for (let i = 0; i < rows; i++) {
+        for (let j = 0; j < cols; j++) {
+            const cell = document.createElement("div");
+            cell.classList.add("cell");
+            if (board[i][j].revealed) {
+                if (board[i][j].mine) {
+                    cell.classList.add("mine");
+                    cell.textContent = "💣";
+                } else {
+                    if (board[i][j].adjacentMines > 0) {
+                        cell.textContent = board[i][j].adjacentMines;
+                    } else {
+                        cell.classList.add("safe");
+                    }
+                }
+            }
+            if (board[i][j].flag) {
+                cell.classList.add("flag");
+                cell.textContent = "🚩";
+            }
+
+            cell.addEventListener("click", () => cellClick(i, j));
+            cell.addEventListener("contextmenu", (e) => {
+                e.preventDefault();
+                cellFlag(i, j);
+            });
+
+            boardElement.appendChild(cell);
+        }
+    }
+}
+
+// Обработка клика на клетку
+function cellClick(row, col) {
+    if (gameOver || board[row][col].flag) return;
+
+    // Если это первый клик, расставляем мины
+    if (firstClick) {
+        placeMines(row, col);
+        firstClick = false;
+    }
+
+    // Если клик по уже открытой числовой клетке - проверяем флажки
+    if (board[row][col].revealed && board[row][col].adjacentMines > 0) {
+        checkAndRevealSurroundings(row, col);
+        return;
+    }
+
+    revealCell(row, col);
+    renderBoard();
+}
+
+// Открывает клетку и соседние безопасные клетки
+function revealCell(row, col) {
+    if (board[row][col].revealed || board[row][col].flag) return;
+
+    board[row][col].revealed = true;
+    revealedCount++;
+
+    if (board[row][col].mine) {
+        gameOver = true;
+        alert("Игра окончена! Вы подорвались на мине.");
+        revealMines();
+    } else if (board[row][col].adjacentMines === 0) {
+        revealAdjacentCells(row, col);
+    }
+}
+
+// Проверяет, соответствуют ли флажки числу в клетке
+function checkAndRevealSurroundings(row, col) {
+    let flagCount = 0;
+    let closedCells = [];
+
+    // Подсчитываем флаги и запоминаем закрытые клетки вокруг
+    for (let x = -1; x <= 1; x++) {
+        for (let y = -1; y <= 1; y++) {
+            const ni = row + x;
+            const nj = col + y;
+            if (ni >= 0 && ni < rows && nj >= 0 && nj < cols) {
+                if (board[ni][nj].flag) flagCount++;
+                if (!board[ni][nj].revealed && !board[ni][nj].flag) closedCells.push([ni, nj]);
+            }
+        }
+    }
+
+    // Если флагов ровно столько, сколько указано в клетке - открываем остальные
+    if (flagCount === board[row][col].adjacentMines) {
+        closedCells.forEach(([r, c]) => revealCell(r, c));
+        renderBoard();
+    }
+}
+
+// Открытие всех клеток с нулями
+function revealAdjacentCells(row, col) {
+    for (let x = -1; x <= 1; x++) {
+        for (let y = -1; y <= 1; y++) {
+            const ni = row + x;
+            const nj = col + y;
+            if (ni >= 0 && ni < rows && nj >= 0 && nj < cols && !board[ni][nj].revealed) {
+                revealCell(ni, nj);
+            }
+        }
+    }
+}
+
+// Обработка правого клика (флажок)
+function cellFlag(row, col) {
+    if (gameOver || board[row][col].revealed) return;
+
+    board[row][col].flag = !board[row][col].flag;
+    renderBoard();
+}
+
+// Открытие всех мин при поражении
+function revealMines() {
+    for (let i = 0; i < rows; i++) {
+        for (let j = 0; j < cols; j++) {
+            if (board[i][j].mine) {
+                board[i][j].revealed = true;
+            }
+        }
+    }
+    renderBoard();
+}
+
+// Функция для перезапуска игры
+function restartGame() {
+    initializeBoard();
+}
+
+// Добавление кнопки рестарта
+document.getElementById("restart").addEventListener("click", restartGame);
+
+// Инициализация игры
+initializeBoard();
+
+    </script>
+</body>
+</html>
